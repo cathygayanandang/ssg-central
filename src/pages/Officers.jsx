@@ -121,81 +121,134 @@ export default function Officers() {
 
   const filtered = officers.filter((o) => {
     if (filterType && o.type !== filterType) return false
-    return `${o.full_name} ${o.officers_id} ${o.position || ''}`.toLowerCase().includes(search.toLowerCase())
+    return `${o.full_name} ${o.officers_id} ${o.email || ''} ${o.position || ''}`.toLowerCase().includes(search.toLowerCase())
   })
+
+  const totalUsers = officers.length
+  const totalAdmins = officers.filter(o => o.type === 'admin').length
+  const totalOfficers = totalUsers - totalAdmins
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div className="d-flex gap-2 flex-wrap">
-          <input
-            className="form-control"
-            style={{ maxWidth: 280 }}
-            placeholder="Search by name, ID, email, position…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="btn-group">
-            <button className={`btn btn-sm ${filterType === '' ? 'btn-navy' : 'btn-outline-navy'}`} onClick={() => setFilterType('')}>All</button>
-            <button className={`btn btn-sm ${filterType === 'officer' ? 'btn-navy' : 'btn-outline-navy'}`} onClick={() => setFilterType('officer')}>Officers</button>
-            <button className={`btn btn-sm ${filterType === 'admin' ? 'btn-navy' : 'btn-outline-navy'}`} onClick={() => setFilterType('admin')}>Admins</button>
+      {/* Top Title & Header */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h5 className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ color: 'var(--navy-900)' }}>
+            <i className="bi bi-people"></i> System Users & Officers
+          </h5>
+          <div className="small text-muted">
+            <span style={{ color: 'var(--gold-500, #c8a45e)' }}>Dashboard</span> / Users
           </div>
         </div>
         {isAdmin && (
-          <button className="btn btn-navy" onClick={openCreate}>
-            <i className="bi bi-plus-lg me-1"></i> Add User
+          <button className="btn btn-navy d-flex align-items-center gap-1" onClick={openCreate} style={{ backgroundColor: '#12203d', borderColor: '#12203d' }}>
+            <i className="bi bi-plus-lg"></i> Add User
           </button>
         )}
       </div>
 
-      <div className="table-surface">
+      {/* Summary Stat Cards */}
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-md-4">
+          <div className="card-surface p-3" style={{ borderLeft: '4px solid #12203d' }}>
+            <div className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.75rem', letterSpacing: '0.5px' }}>TOTAL USERS</div>
+            <div className="fs-2 fw-bold" style={{ color: 'var(--navy-900)' }}>{totalUsers}</div>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="card-surface p-3" style={{ borderLeft: '4px solid var(--gold-500, #c8a45e)' }}>
+            <div className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.75rem', letterSpacing: '0.5px' }}>ADMINS</div>
+            <div className="fs-2 fw-bold" style={{ color: 'var(--navy-900)' }}>{totalAdmins}</div>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="card-surface p-3" style={{ borderLeft: '4px solid #3a5a8c' }}>
+            <div className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.75rem', letterSpacing: '0.5px' }}>OFFICERS / STAFF</div>
+            <div className="fs-2 fw-bold" style={{ color: 'var(--navy-900)' }}>{totalOfficers}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search Bar & Filter Toggle */}
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div className="position-relative" style={{ maxWidth: 360, width: '100%' }}>
+          <i className="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+          <input
+            className="form-control ps-5"
+            placeholder="Search by name, ID, email, or position..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="btn-group">
+          <button 
+            className={`btn btn-sm ${filterType === '' ? 'btn-navy' : 'btn-outline-navy'}`} 
+            onClick={() => setFilterType('')}
+            style={{ backgroundColor: filterType === '' ? '#12203d' : 'transparent', color: filterType === '' ? '#fff' : '#12203d' }}
+          >
+            All
+          </button>
+          <button 
+            className={`btn btn-sm ${filterType === 'officer' ? 'btn-navy' : 'btn-outline-navy'}`} 
+            onClick={() => setFilterType('officer')}
+            style={{ backgroundColor: filterType === 'officer' ? '#12203d' : 'transparent', color: filterType === 'officer' ? '#fff' : '#12203d' }}
+          >
+            Officers
+          </button>
+          <button 
+            className={`btn btn-sm ${filterType === 'admin' ? 'btn-navy' : 'btn-outline-navy'}`} 
+            onClick={() => setFilterType('admin')}
+            style={{ backgroundColor: filterType === 'admin' ? '#12203d' : 'transparent', color: filterType === 'admin' ? '#fff' : '#12203d' }}
+          >
+            Admins
+          </button>
+        </div>
+      </div>
+
+      {/* Roster Table */}
+      <div className="table-surface card-surface p-0">
         <div className="table-responsive">
-          <table className="table mb-0">
-            <thead>
-              <tr>
-                <th>Officer ID</th>
-                <th>Name</th>
-                <th>Position</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Contact</th>
-                <th className="text-end">Actions</th>
+          <table className="table align-middle mb-0">
+            <thead style={{ backgroundColor: '#f8f9fa' }}>
+              <tr className="small text-muted text-uppercase" style={{ fontSize: '0.75rem' }}>
+                <th style={{ width: 40 }} className="ps-3"><input type="checkbox" className="form-check-input" /></th>
+                <th>ID</th>
+                <th>NAME</th>
+                <th>EMAIL</th>
+                <th>POSITION</th>
+                <th>TYPE</th>
+                <th>STATUS</th>
+                <th className="text-end pe-3">ACTION</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="7" className="text-center text-muted py-4">Loading…</td></tr>
+                <tr><td colSpan="8" className="text-center text-muted py-4">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan="7" className="text-center text-muted py-4">No officers found.</td></tr>
+                <tr><td colSpan="8" className="text-center text-muted py-4">No system users found.</td></tr>
               ) : (
                 filtered.map((o) => (
                   <tr key={o.id}>
-                    <td className="fw-semibold">{o.officers_id}</td>
-                    <td>{o.full_name}</td>
-                    <td>{o.position || '—'}</td>
-                    <td className="text-capitalize">{o.type}</td>
+                    <td className="ps-3"><input type="checkbox" className="form-check-input" /></td>
+                    <td className="fw-bold" style={{ color: '#c8a45e' }}>{o.officers_id}</td>
+                    <td className="fw-semibold text-capitalize">{o.full_name}</td>
+                    <td className="small text-muted">{o.email || '—'}</td>
+                    <td className="small text-muted text-uppercase">{o.position || '—'}</td>
+                    <td>
+                      <span className="badge rounded-pill px-2 py-1 small" style={{
+                        backgroundColor: o.type === 'admin' ? '#ffe5ec' : '#e7f5ff',
+                        color: o.type === 'admin' ? '#ff4d6d' : '#1c7ed6',
+                        fontWeight: 600,
+                        fontSize: '0.75rem'
+                      }}>
+                        {o.type === 'admin' ? 'Admin' : 'User'}
+                      </span>
+                    </td>
                     <td><StatusBadge status={o.is_active ? 'active' : 'inactive'} /></td>
-                    <td className="small text-muted">{o.email || o.phone || '—'}</td>
-                    <td className="text-end">
-                      <button className="btn btn-sm btn-outline-navy me-1" onClick={() => openDetails(o)} title="View">
-                        <i className="bi bi-eye"></i>
+                    <td className="text-end pe-3">
+                      <button className="btn btn-sm btn-outline-navy me-1 px-3" onClick={() => openDetails(o)}>
+                        View
                       </button>
-                      <button className="btn btn-sm btn-outline-navy me-1" onClick={() => setBadgeOfficer(o)} title="View QR badge">
-                        <i className="bi bi-qr-code"></i>
-                      </button>
-                      {isAdmin && (
-                        <>
-                          <button className="btn btn-sm btn-outline-secondary me-1" onClick={() => openEdit(o)} title="Edit">
-                            <i className="bi bi-pencil"></i>
-                          </button>
-                          <button className="btn btn-sm btn-outline-secondary me-1" onClick={() => handleToggleActive(o)} title="Toggle active">
-                            <i className="bi bi-power"></i>
-                          </button>
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => handleDelete(o)} title="Delete">
-                            <i className="bi bi-trash"></i>
-                          </button>
-                        </>
-                      )}
                     </td>
                   </tr>
                 ))
@@ -205,6 +258,7 @@ export default function Officers() {
         </div>
       </div>
 
+      {/* Add / Edit User Modal */}
       <Modal
         show={showForm}
         title={editingId ? 'Edit User' : 'Add User'}
@@ -241,7 +295,7 @@ export default function Officers() {
             </div>
             <div className="col-6">
               <label className="form-label small fw-semibold">Position</label>
-              <input className="form-control" placeholder="e.g. President, Secretary" value={form.position}
+              <input className="form-control" placeholder="e.g. President, Senator" value={form.position}
                 onChange={(e) => setForm({ ...form, position: e.target.value })} />
             </div>
             <div className="col-6">
@@ -283,23 +337,7 @@ export default function Officers() {
         </form>
       </Modal>
 
-      <Modal
-        show={!!badgeOfficer}
-        title="Officer QR Badge"
-        onClose={() => setBadgeOfficer(null)}
-        footer={<button className="btn btn-navy" onClick={() => setBadgeOfficer(null)}>Close</button>}
-      >
-        {badgeOfficer && (
-          <div className="text-center">
-            <div className="d-inline-block p-3 bg-white rounded-3 border mb-3">
-              <QRCodeCanvas value={badgeOfficer.qr_data || badgeOfficer.officers_id} size={200} fgColor="#12203d" />
-            </div>
-            <div className="fw-bold" style={{ color: 'var(--navy-900)' }}>{badgeOfficer.full_name}</div>
-            <div className="text-muted small">{badgeOfficer.officers_id} · {badgeOfficer.position || badgeOfficer.type}</div>
-          </div>
-        )}
-      </Modal>
-
+      {/* User Details Modal */}
       <Modal
         show={!!detailsOfficer}
         title="User Details"
