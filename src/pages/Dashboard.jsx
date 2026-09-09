@@ -31,7 +31,7 @@ const QUICK_ACTIONS = [
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { profile, isAdmin } = useAuth()
+  const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     officers: 0, admins: 0, staff: 0,
@@ -160,8 +160,8 @@ export default function Dashboard() {
           <h5 className="fw-bold mb-1">Welcome, {profile?.full_name?.split(' ')[0] || 'there'}</h5>
           <div className="small" style={{ opacity: 0.8 }}>SSG organization status at a glance.</div>
         </div>
-        <span className="badge-status" style={{ background: 'var(--gold-500, #c8a45e)', color: 'var(--navy-900)' }}>
-          {isAdmin ? 'ADMIN' : 'OFFICER'}
+        <span className="badge-status d-flex align-items-center gap-1" style={{ background: 'var(--gold-500, #c8a45e)', color: 'var(--navy-900)' }}>
+          <i className="bi bi-person-badge-fill"></i> ADMIN
         </span>
       </div>
 
@@ -169,8 +169,8 @@ export default function Dashboard() {
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <StatCard
-            icon="bi-people-fill" label="Users & Officers" value={stats.officers} accent={NAVY}
-            sub={`${stats.admins} admin${stats.admins === 1 ? '' : 's'} · ${stats.staff} officer${stats.staff === 1 ? '' : 's'}`}
+            icon="bi-shield-lock-fill" label="Admins & Staff" value={stats.officers} accent={NAVY}
+            sub={`${stats.admins} admin${stats.admins === 1 ? '' : 's'} · ${stats.staff} staff`}
           />
         </div>
         <div className="col-6 col-lg-3">
@@ -313,7 +313,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Student Attendance Table (Full Width) */}
+      {/* Recent Student Attendance Table */}
       <div className="row g-3">
         <div className="col-12">
           <div className="card-surface p-3">
