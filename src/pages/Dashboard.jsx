@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'chart.js'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../context/AuthContext'
 import StatCard from '../components/StatCard'
 import StatusBadge from '../components/StatusBadge'
 
@@ -30,8 +31,14 @@ const QUICK_ACTIONS = [
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { profile, isAdmin } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ officers: 0, students: 0, events: 0, fines: 0 })
+  const [stats, setStats] = useState({
+    officers: 0, admins: 0, staff: 0,
+    students: 0, courses: 0,
+    events: 0, activeEvents: 0,
+    fines: 0, unpaidFines: 0,
+  })
   const [attendanceByEvent, setAttendanceByEvent] = useState({ labels: [], present: [], absent: [] })
   const [overallAttendance, setOverallAttendance] = useState({ present: 0, absent: 0 })
   const [recentEvents, setRecentEvents] = useState([])
@@ -43,23 +50,39 @@ export default function Dashboard() {
       setLoading(true)
 
       const [
-        { count: officerCount },
-        { count: studentCount },
+        { data: peopleRows },
+        { data: studentRows },
         { count: eventCount },
-        { count: fineCount },
+        { data: allEvents },
+        { data: fineRows },
         { data: eventsForChart },
         { data: allStudentAttendance },
         { data: recentEventRows },
       ] = await Promise.all([
-        supabase.from('people').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('students').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('people').select('id, role').eq('is_active', true),
+        supabase.from('students').select('id, course').eq('status', 'active'),
         supabase.from('events').select('*', { count: 'exact', head: true }),
-        supabase.from('fines').select('*', { count: 'exact', head: true }),
+        supabase.from('events').select('id, status'),
+        supabase.from('fines').select('id, event_id, amount, status'),
         supabase.from('events').select('id, title').order('date', { ascending: false }).limit(5),
         supabase.from('student_attendance').select('event_id, status'),
         supabase.from('events').select('*').order('date', { ascending: false }).limit(5),
       ])
 
+      // --- stat card breakdowns ---
+      const people = peopleRows || []
+      const admins = people.filter((p) => p.role === 'admin').length
+      const staff = people.length - admins
+
+      const students = studentRows || []
+      const courses = new Set(students.map((s) => s.course)).size
+
+      const activeEvents = (allEvents || []).filter((e) => ['upcoming', 'ongoing'].includes(e.status)).length
+
+      const fines = fineRows || []
+      const unpaidFines = fines.filter((f) => f.status !== 'paid').length
+
+      // --- attendance chart ---
       const rows = allStudentAttendance || []
       const eventIds = (eventsForChart || []).map((e) => e.id)
       const labels = (eventsForChart || []).map((e) => e.title)
@@ -69,17 +92,35 @@ export default function Dashboard() {
       const totalPresent = rows.filter((r) => r.status === 'present').length
       const totalAbsent = rows.filter((r) => r.status === 'absent').length
 
+      // --- recent events, enriched with total fines tied to each event ---
+      const recentIds = (recentEventRows || []).map((e) => e.id)
+      const fineTotalByEvent = {}
+      fines.forEach((f) => {
+        if (!f.event_id || !recentIds.includes(f.event_id)) return
+        fineTotalByEvent[f.event_id] = (fineTotalByEvent[f.event_id] || 0) + Number(f.amount || 0)
+      })
+      const enrichedRecentEvents = (recentEventRows || []).map((ev) => ({
+        ...ev,
+        fineTotal: fineTotalByEvent[ev.id] || 0,
+      }))
+
+      // --- recent student attendance, with full record detail ---
       const { data: recentSA } = await supabase
         .from('student_attendance')
         .select('*, events:event_id(title)')
         .order('check_in_time', { ascending: false })
-        .limit(5)
+        .limit(10)
 
       if (!active) return
-      setStats({ officers: officerCount || 0, students: studentCount || 0, events: eventCount || 0, fines: fineCount || 0 })
+      setStats({
+        officers: people.length, admins, staff,
+        students: students.length, courses,
+        events: eventCount || 0, activeEvents,
+        fines: fines.length, unpaidFines,
+      })
       setAttendanceByEvent({ labels, present, absent })
       setOverallAttendance({ present: totalPresent, absent: totalAbsent })
-      setRecentEvents(recentEventRows || [])
+      setRecentEvents(enrichedRecentEvents)
       setRecentStudentAttendance(recentSA || [])
       setLoading(false)
     }
@@ -87,20 +128,54 @@ export default function Dashboard() {
     return () => { active = false }
   }, [])
 
+  const eventDateBadge = (dateStr) => {
+    if (!dateStr) return { day: '—', month: '' }
+    const d = new Date(dateStr)
+    return {
+      day: d.getDate(),
+      month: d.toLocaleString('en-US', { month: 'short' }).toUpperCase(),
+    }
+  }
+
   return (
     <div>
+      <div
+        className="card-surface p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2"
+        style={{ background: 'var(--navy-900)', color: '#fff' }}
+      >
+        <div>
+          <h5 className="fw-bold mb-1">Welcome, {profile?.full_name?.split(' ')[0] || 'there'}</h5>
+          <div className="small" style={{ opacity: 0.8 }}>SSG organization status at a glance.</div>
+        </div>
+        <span className="badge-status" style={{ background: 'var(--gold-500, #c8a45e)', color: 'var(--navy-900)' }}>
+          {isAdmin ? 'ADMIN' : 'OFFICER'}
+        </span>
+      </div>
+
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
-          <StatCard icon="bi-people-fill" label="Users & Officers" value={stats.officers} accent={NAVY} />
+          <StatCard
+            icon="bi-people-fill" label="Users & Officers" value={stats.officers} accent={NAVY}
+            sub={`${stats.admins} admin${stats.admins === 1 ? '' : 's'} · ${stats.staff} officer${stats.staff === 1 ? '' : 's'}`}
+          />
         </div>
         <div className="col-6 col-lg-3">
-          <StatCard icon="bi-mortarboard-fill" label="Students" value={stats.students} accent="#3a5a8c" />
+          <StatCard
+            icon="bi-mortarboard-fill" label="Students" value={stats.students} accent="#3a5a8c"
+            sub={`${stats.courses} course${stats.courses === 1 ? '' : 's'}`}
+          />
         </div>
         <div className="col-6 col-lg-3">
-          <StatCard icon="bi-calendar-check" label="Events" value={stats.events} accent={GOLD} />
+          <StatCard
+            icon="bi-calendar-check" label="Events" value={stats.events} accent={GOLD}
+            sub={`${stats.activeEvents} active`}
+          />
         </div>
         <div className="col-6 col-lg-3">
-          <StatCard icon="bi-cash-stack" label="Fines" value={stats.fines} accent={RED} />
+          <StatCard
+            icon="bi-cash-stack" label="Fines" value={stats.fines} accent={RED}
+            sub={`${stats.unpaidFines} unpaid`}
+          />
         </div>
       </div>
 
@@ -136,7 +211,10 @@ export default function Dashboard() {
                 options={{
                   responsive: true,
                   plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+                  scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+                  },
                 }}
               />
             ) : (
@@ -175,15 +253,32 @@ export default function Dashboard() {
               <div className="text-muted small">No events yet.</div>
             ) : (
               <ul className="list-unstyled mb-0">
-                {recentEvents.map((ev) => (
-                  <li key={ev.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
-                    <div>
-                      <div className="fw-semibold small">{ev.title}</div>
-                      <div className="text-muted small">{ev.date}</div>
-                    </div>
-                    <StatusBadge status={ev.status} />
-                  </li>
-                ))}
+                {recentEvents.map((ev) => {
+                  const { day, month } = eventDateBadge(ev.date)
+                  return (
+                    <li key={ev.id} className="d-flex align-items-center gap-3 py-2 border-bottom">
+                      <div
+                        className="d-flex flex-column align-items-center justify-content-center flex-shrink-0"
+                        style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--navy-900)', color: '#fff' }}
+                      >
+                        <div className="fw-bold" style={{ fontSize: '0.95rem', lineHeight: 1 }}>{day}</div>
+                        <div style={{ fontSize: '0.6rem', letterSpacing: '0.5px' }}>{month}</div>
+                      </div>
+                      <div className="flex-grow-1">
+                        <div className="fw-semibold small">{ev.title}</div>
+                        <div className="text-muted small">{ev.type || '—'}{ev.location ? ` · ${ev.location}` : ''}</div>
+                      </div>
+                      <div className="d-flex flex-column align-items-end gap-1">
+                        {ev.fineTotal > 0 && (
+                          <span className="badge-status" style={{ background: 'var(--gold-500, #c8a45e)', color: 'var(--navy-900)' }}>
+                            Fine ₱{ev.fineTotal.toLocaleString()}
+                          </span>
+                        )}
+                        <StatusBadge status={ev.status} />
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
@@ -197,17 +292,35 @@ export default function Dashboard() {
             {recentStudentAttendance.length === 0 ? (
               <div className="text-muted small">No student attendance recorded yet.</div>
             ) : (
-              <ul className="list-unstyled mb-0">
-                {recentStudentAttendance.map((r) => (
-                  <li key={r.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
-                    <div>
-                      <div className="fw-semibold small">{r.student_name}</div>
-                      <div className="text-muted small">{r.events?.title || '—'} · {r.course}</div>
-                    </div>
-                    <StatusBadge status={r.status} />
-                  </li>
-                ))}
-              </ul>
+              <div className="table-responsive">
+                <table className="table table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Event</th>
+                      <th>Status</th>
+                      <th>Time in</th>
+                      <th>Time out</th>
+                      <th>Method</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentStudentAttendance.map((r) => (
+                      <tr key={r.id}>
+                        <td>
+                          <div className="fw-semibold small">{r.student_name}</div>
+                          <div className="text-muted small">{r.course}</div>
+                        </td>
+                        <td className="small text-muted">{r.events?.title || '—'}</td>
+                        <td><StatusBadge status={r.status} /></td>
+                        <td className="small text-muted">{r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : '—'}</td>
+                        <td className="small text-muted">{r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString() : '—'}</td>
+                        <td className="text-capitalize small text-muted">{r.method?.replace('_', ' ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
