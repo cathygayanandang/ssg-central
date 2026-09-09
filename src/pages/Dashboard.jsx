@@ -19,8 +19,8 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Le
 
 const NAVY = '#12203d'
 const GOLD = '#c8a45e'
-const GREEN = '#3f7a5e'
-const RED = '#b1465a'
+const RED = '#ff4d6d'
+const GREEN = '#2ec4b6'
 
 const QUICK_ACTIONS = [
   { label: 'New Event', icon: 'bi-calendar-plus', to: '/events' },
@@ -69,7 +69,6 @@ export default function Dashboard() {
         supabase.from('events').select('*').order('date', { ascending: false }).limit(5),
       ])
 
-      // --- stat card breakdowns ---
       const people = peopleRows || []
       const admins = people.filter((p) => p.role === 'admin').length
       const staff = people.length - admins
@@ -82,7 +81,6 @@ export default function Dashboard() {
       const fines = fineRows || []
       const unpaidFines = fines.filter((f) => f.status !== 'paid').length
 
-      // --- attendance chart ---
       const rows = allStudentAttendance || []
       const eventIds = (eventsForChart || []).map((e) => e.id)
       const labels = (eventsForChart || []).map((e) => e.title)
@@ -92,7 +90,6 @@ export default function Dashboard() {
       const totalPresent = rows.filter((r) => r.status === 'present').length
       const totalAbsent = rows.filter((r) => r.status === 'absent').length
 
-      // --- recent events, enriched with total fines tied to each event ---
       const recentIds = (recentEventRows || []).map((e) => e.id)
       const fineTotalByEvent = {}
       fines.forEach((f) => {
@@ -104,7 +101,6 @@ export default function Dashboard() {
         fineTotal: fineTotalByEvent[ev.id] || 0,
       }))
 
-      // --- recent student attendance, with full record detail ---
       const { data: recentSA } = await supabase
         .from('student_attendance')
         .select('*, events:event_id(title)')
@@ -137,8 +133,25 @@ export default function Dashboard() {
     }
   }
 
+  const formatDateTime = (dateTimeStr) => {
+    if (!dateTimeStr) return '—'
+    const d = new Date(dateTimeStr)
+    return d.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
+
+  const totalAttendance = overallAttendance.present + overallAttendance.absent
+  const presentPct = totalAttendance > 0 ? ((overallAttendance.present / totalAttendance) * 100).toFixed(1) : '0.0'
+  const absentPct = totalAttendance > 0 ? ((overallAttendance.absent / totalAttendance) * 100).toFixed(1) : '0.0'
+
   return (
     <div>
+      {/* Welcome Banner */}
       <div
         className="card-surface p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2"
         style={{ background: 'var(--navy-900)', color: '#fff' }}
@@ -152,6 +165,7 @@ export default function Dashboard() {
         </span>
       </div>
 
+      {/* Top Stat Cards */}
       <div className="row g-3 mb-3">
         <div className="col-6 col-lg-3">
           <StatCard
@@ -179,20 +193,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="card-surface p-3 mb-3">
-        <h6 className="fw-bold mb-3" style={{ color: 'var(--navy-900)' }}>Quick Actions</h6>
-        <div className="row g-2">
-          {QUICK_ACTIONS.map((action) => (
-            <div className="col-6 col-lg-3" key={action.label}>
-              <button className="btn btn-outline-navy w-100 h-100 py-3" onClick={() => navigate(action.to)}>
-                <i className={`bi ${action.icon} d-block fs-4 mb-1`}></i>
-                <span className="small">{action.label}</span>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
+      {/* Attendance Charts */}
       <div className="row g-3 mb-3">
         <div className="col-lg-8">
           <div className="card-surface p-3 h-100">
@@ -204,8 +205,8 @@ export default function Dashboard() {
                 data={{
                   labels: attendanceByEvent.labels,
                   datasets: [
-                    { label: 'Present', data: attendanceByEvent.present, backgroundColor: NAVY, borderRadius: 6 },
-                    { label: 'Absent', data: attendanceByEvent.absent, backgroundColor: RED, borderRadius: 6 },
+                    { label: 'Present', data: attendanceByEvent.present, backgroundColor: GREEN, borderRadius: 4 },
+                    { label: 'Absent', data: attendanceByEvent.absent, backgroundColor: RED, borderRadius: 4 },
                   ],
                 }}
                 options={{
@@ -213,7 +214,12 @@ export default function Dashboard() {
                   plugins: { legend: { position: 'bottom' } },
                   scales: {
                     x: { stacked: true },
-                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+                    y: { 
+                      stacked: true, 
+                      beginAtZero: true,
+                      max: 96,
+                      ticks: { stepSize: 8 }
+                    },
                   },
                 }}
               />
@@ -227,13 +233,18 @@ export default function Dashboard() {
             <h6 className="fw-bold mb-3" style={{ color: 'var(--navy-900)' }}>Overall Attendance</h6>
             {loading ? (
               <div className="text-muted small">Loading…</div>
-            ) : (overallAttendance.present + overallAttendance.absent) === 0 ? (
+            ) : totalAttendance === 0 ? (
               <div className="text-muted small">No attendance recorded yet.</div>
             ) : (
               <Doughnut
                 data={{
-                  labels: ['Present', 'Absent'],
-                  datasets: [{ data: [overallAttendance.present, overallAttendance.absent], backgroundColor: [GREEN, RED], borderWidth: 0 }],
+                  labels: [`Present ${presentPct}%`, `Absent ${absentPct}%`],
+                  datasets: [{
+                    data: [overallAttendance.present, overallAttendance.absent],
+                    backgroundColor: [GREEN, RED],
+                    borderWidth: 0,
+                    cutout: '75%',
+                  }],
                 }}
                 options={{ plugins: { legend: { position: 'bottom' } } }}
               />
@@ -242,8 +253,25 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="row g-3">
-        <div className="col-lg-6">
+      {/* Quick Actions & Recent Events */}
+      <div className="row g-3 mb-3">
+        <div className="col-lg-5">
+          <div className="card-surface p-3 h-100">
+            <h6 className="fw-bold mb-3" style={{ color: 'var(--navy-900)' }}>Quick Actions</h6>
+            <div className="row g-2">
+              {QUICK_ACTIONS.map((action) => (
+                <div className="col-6" key={action.label}>
+                  <button className="btn btn-outline-navy w-100 h-100 py-3" onClick={() => navigate(action.to)}>
+                    <i className={`bi ${action.icon} d-block fs-4 mb-1`}></i>
+                    <span className="small">{action.label}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="col-lg-7">
           <div className="card-surface p-3 h-100">
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--navy-900)' }}>Recent Events</h6>
@@ -283,8 +311,12 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div className="col-lg-6">
-          <div className="card-surface p-3 h-100">
+      </div>
+
+      {/* Recent Student Attendance Table (Full Width) */}
+      <div className="row g-3">
+        <div className="col-12">
+          <div className="card-surface p-3">
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--navy-900)' }}>Recent Student Attendance</h6>
               <button className="btn btn-sm btn-outline-navy" onClick={() => navigate('/student-attendance')}>View All</button>
@@ -293,28 +325,28 @@ export default function Dashboard() {
               <div className="text-muted small">No student attendance recorded yet.</div>
             ) : (
               <div className="table-responsive">
-                <table className="table table-sm mb-0">
+                <table className="table table-sm align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>Student</th>
-                      <th>Event</th>
-                      <th>Status</th>
-                      <th>Time in</th>
-                      <th>Time out</th>
-                      <th>Method</th>
+                      <th>STUDENT</th>
+                      <th>EVENT</th>
+                      <th>STATUS</th>
+                      <th>TIME IN</th>
+                      <th>TIME OUT</th>
+                      <th>METHOD</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recentStudentAttendance.map((r) => (
                       <tr key={r.id}>
                         <td>
-                          <div className="fw-semibold small">{r.student_name}</div>
+                          <div className="fw-semibold small text-uppercase">{r.student_name}</div>
                           <div className="text-muted small">{r.course}</div>
                         </td>
-                        <td className="small text-muted">{r.events?.title || '—'}</td>
+                        <td className="small text-muted text-uppercase">{r.events?.title || '—'}</td>
                         <td><StatusBadge status={r.status} /></td>
-                        <td className="small text-muted">{r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : '—'}</td>
-                        <td className="small text-muted">{r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString() : '—'}</td>
+                        <td className="small text-muted">{formatDateTime(r.check_in_time)}</td>
+                        <td className="small text-muted">{formatDateTime(r.check_out_time)}</td>
                         <td className="text-capitalize small text-muted">{r.method?.replace('_', ' ')}</td>
                       </tr>
                     ))}
