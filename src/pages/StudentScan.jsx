@@ -20,6 +20,14 @@ export default function StudentScan() {
   const [recent, setRecent] = useState([])
   const scannerRef = useRef(null)
   const readerElId = 'student-scan-reader'
+  // Prevents a single physical scan from being processed multiple times.
+  // html5-qrcode's callback fires repeatedly (many times/sec) for as long as
+  // a code is visible to the camera, so without a lock + cooldown, one scan
+  // could register as several rapid duplicate check-ins/check-outs.
+  const isProcessingRef = useRef(false)
+  const lastScanRef = useRef({ code: null, time: 0 })
+  const SCAN_COOLDOWN_MS = 4000
+  const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
     supabase.from('events').select('*').eq('id', eventId).single().then(({ data }) => setEvent(data))
@@ -61,14 +69,19 @@ export default function StudentScan() {
       return
     }
     const student = await resolveStudent({ studentNo, studentName, course })
-    const resolvedName = student?.full_name || studentName
-    const resolvedCourse = student?.course || course || 'N/A'
+    const resolvedName = (student?.full_name || studentName).trim()
+    const resolvedCourse = (student?.course || course || 'N/A').trim()
 
     // Find an existing open record for this student at this event.
+    // Prefer matching by student_id when we have it (exact, reliable).
+    // Fall back to name+course matching for unregistered/manual entries —
+    // use case/whitespace-insensitive matching (ilike) here, since two
+    // manual entries for the same person can differ slightly in casing or
+    // spacing and would otherwise slip past the duplicate check.
     const query = supabase.from('student_attendance').select('*').eq('event_id', eventId)
     const { data: existing } = student
       ? await query.eq('student_id', student.id).maybeSingle()
-      : await query.eq('student_name', resolvedName).eq('course', resolvedCourse).maybeSingle()
+      : await query.ilike('student_name', resolvedName).ilike('course', resolvedCourse).maybeSingle()
 
     if (!existing) {
       const { data, error } = await supabase.from('student_attendance').insert({
@@ -112,13 +125,36 @@ export default function StudentScan() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: 240 },
         async (decodedText) => {
-          const directory = parseStudentDirectoryQrPayload(decodedText)
-          if (directory) {
-            await recordScan({ studentNo: directory.studentNo, studentName: directory.fullName }, 'qr_scan')
+          // Ignore new detections while a scan is still being saved — the
+          // camera can fire this callback many times per second for the
+          // same code, and without this guard, two overlapping calls could
+          // both find "no existing record" and each insert a row before
+          // either finishes, creating a duplicate attendance entry.
+          if (isProcessingRef.current) return
+
+          // Ignore the *same* code again for a short cooldown window after
+          // a successful scan, so holding the QR in front of the camera
+          // doesn't immediately toggle IN -> OUT on the very next frame.
+          const now = Date.now()
+          if (lastScanRef.current.code === decodedText && now - lastScanRef.current.time < SCAN_COOLDOWN_MS) {
             return
           }
-          const { studentName, course } = parseStudentQrPayload(decodedText)
-          await recordScan({ studentName, course }, 'qr_scan')
+
+          isProcessingRef.current = true
+          setProcessing(true)
+          try {
+            const directory = parseStudentDirectoryQrPayload(decodedText)
+            if (directory) {
+              await recordScan({ studentNo: directory.studentNo, studentName: directory.fullName }, 'qr_scan')
+            } else {
+              const { studentName, course } = parseStudentQrPayload(decodedText)
+              await recordScan({ studentName, course }, 'qr_scan')
+            }
+            lastScanRef.current = { code: decodedText, time: now }
+          } finally {
+            isProcessingRef.current = false
+            setProcessing(false)
+          }
         }
       )
     } catch (err) {
@@ -171,6 +207,12 @@ export default function StudentScan() {
           {tab === 'qr' ? (
             <>
               <div id={readerElId} style={{ minHeight: scanning ? 260 : 0 }}></div>
+              {processing && (
+                <div className="text-center small text-muted mt-2">
+                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                  Saving scan…
+                </div>
+              )}
               {!scanning ? (
                 <button className="btn btn-navy w-100 mt-2" onClick={startScanner}>
                   <i className="bi bi-camera me-1"></i> Start Scanner
